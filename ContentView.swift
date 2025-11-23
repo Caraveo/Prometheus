@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var outputPath: String? = nil
     @State private var dragOver: Bool = false
     @State private var droppedImagePath: String = ""
+    @State private var generateMaterials: Bool = false
+    @State private var materialPaths: [String: String] = [:]
     
     enum GenerationMode: String, CaseIterable {
         case textTo3D = "Text to 3D"
@@ -26,6 +28,9 @@ struct ContentView: View {
                 VStack(spacing: 24) {
                     // Mode Selection
                     modeSelectionView
+                    
+                    // Material Generation Option
+                    materialGenerationView
                     
                     // Input Section
                     inputSectionView
@@ -302,6 +307,7 @@ struct ContentView: View {
         isGenerating = true
         statusMessage = "Initializing generation..."
         outputPath = nil
+        materialPaths = [:]
         
         // Get the script path - try bundle first, then current directory
         let scriptName = "shap_e_generator.py"
@@ -324,7 +330,8 @@ struct ContentView: View {
                     envPath: envPath,
                     mode: selectedMode,
                     prompt: prompt,
-                    imagePath: selectedMode == .imageTo3D ? droppedImagePath : nil
+                    imagePath: selectedMode == .imageTo3D ? droppedImagePath : nil,
+                    generateMaterials: generateMaterials
                 )
                 
                 await MainActor.run {
@@ -332,6 +339,10 @@ struct ContentView: View {
                     if result.success {
                         statusMessage = "3D model generated successfully!"
                         outputPath = result.outputPath
+                        materialPaths = result.materialPaths
+                        if !result.materialPaths.isEmpty {
+                            statusMessage += " Materials generated!"
+                        }
                     } else {
                         statusMessage = "Error: \(result.error ?? "Unknown error")"
                     }
@@ -350,8 +361,9 @@ struct ContentView: View {
         envPath: String,
         mode: GenerationMode,
         prompt: String,
-        imagePath: String?
-    ) async throws -> (success: Bool, outputPath: String?, error: String?) {
+        imagePath: String?,
+        generateMaterials: Bool = false
+    ) async throws -> (success: Bool, outputPath: String?, error: String?, materialPaths: [String: String]) {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 // Create a status update callback
@@ -386,6 +398,10 @@ struct ContentView: View {
                 if let imagePath = imagePath {
                     arguments.append("--image")
                     arguments.append(imagePath)
+                }
+                
+                if generateMaterials {
+                    arguments.append("--generate-materials")
                 }
                 
                 process.arguments = arguments
@@ -459,12 +475,12 @@ struct ContentView: View {
                         // Extract output path from the output
                         let lines = output.components(separatedBy: .newlines)
                         var outputPath: String? = nil
-                        
                         var usdzPath: String? = nil
+                        var materialPaths: [String: String] = [:]
+                        
                         for line in lines {
                             if line.contains("OUTPUT_PATH:") {
                                 let path = line.components(separatedBy: "OUTPUT_PATH:").last?.trimmingCharacters(in: .whitespaces) ?? ""
-                                // Convert relative path to absolute if needed
                                 if !path.isEmpty {
                                     if (path as NSString).isAbsolutePath {
                                         outputPath = path
@@ -481,6 +497,26 @@ struct ContentView: View {
                                         usdzPath = (scriptDir as NSString).appendingPathComponent(path)
                                     }
                                 }
+                            } else if line.contains("MATERIAL_ALBEDO:") {
+                                let path = line.components(separatedBy: "MATERIAL_ALBEDO:").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                                if !path.isEmpty {
+                                    materialPaths["albedo"] = (path as NSString).isAbsolutePath ? path : (scriptDir as NSString).appendingPathComponent(path)
+                                }
+                            } else if line.contains("MATERIAL_ROUGHNESS:") {
+                                let path = line.components(separatedBy: "MATERIAL_ROUGHNESS:").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                                if !path.isEmpty {
+                                    materialPaths["roughness"] = (path as NSString).isAbsolutePath ? path : (scriptDir as NSString).appendingPathComponent(path)
+                                }
+                            } else if line.contains("MATERIAL_METALLIC:") {
+                                let path = line.components(separatedBy: "MATERIAL_METALLIC:").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                                if !path.isEmpty {
+                                    materialPaths["metallic"] = (path as NSString).isAbsolutePath ? path : (scriptDir as NSString).appendingPathComponent(path)
+                                }
+                            } else if line.contains("MATERIAL_BUMP:") {
+                                let path = line.components(separatedBy: "MATERIAL_BUMP:").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                                if !path.isEmpty {
+                                    materialPaths["bump"] = (path as NSString).isAbsolutePath ? path : (scriptDir as NSString).appendingPathComponent(path)
+                                }
                             }
                         }
                         
@@ -489,10 +525,10 @@ struct ContentView: View {
                             outputPath = usdzPath
                         }
                         
-                        continuation.resume(returning: (true, outputPath, nil))
+                        continuation.resume(returning: (true, outputPath, nil, materialPaths))
                     } else {
                         let errorMsg = errorOutput.isEmpty ? "Process failed with status \(process.terminationStatus)" : errorOutput
-                        continuation.resume(returning: (false, nil, errorMsg))
+                        continuation.resume(returning: (false, nil, errorMsg, [:]))
                     }
                 } catch {
                     outputHandle.readabilityHandler = nil

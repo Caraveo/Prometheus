@@ -463,6 +463,8 @@ def main():
                         help='Path to input image (required for image mode)')
     parser.add_argument('--output', type=str, default='output',
                         help='Output directory for generated models')
+    parser.add_argument('--generate-materials', action='store_true',
+                        help='Generate PBR material maps (albedo, roughness, metallic, bump)')
     
     args = parser.parse_args()
     
@@ -476,6 +478,41 @@ def main():
             output_path = generate_image_to_3d(args.image, args.prompt, args.output)
         
         print(f"Successfully generated 3D model: {output_path}", file=sys.stderr)
+        
+        # Generate materials if requested
+        if args.generate_materials:
+            print("", file=sys.stderr)
+            print("Generating PBR materials...", file=sys.stderr)
+            sys.stderr.flush()
+            
+            try:
+                from material_generator import generate_materials
+                
+                material_result = generate_materials(
+                    mesh_path=output_path,
+                    prompt=args.prompt,
+                    output_dir=os.path.join(args.output, "materials"),
+                    model_dir="pretrained_models"
+                )
+                
+                if material_result.get('success'):
+                    print(f"✓ Materials generated successfully", file=sys.stderr)
+                    print(f"MATERIAL_ALBEDO: {material_result['albedo']}", file=sys.stdout)
+                    print(f"MATERIAL_ROUGHNESS: {material_result['roughness']}", file=sys.stdout)
+                    print(f"MATERIAL_METALLIC: {material_result['metallic']}", file=sys.stdout)
+                    print(f"MATERIAL_BUMP: {material_result['bump']}", file=sys.stdout)
+                    sys.stdout.flush()
+                else:
+                    print(f"⚠ Material generation failed: {material_result.get('error', 'Unknown error')}", file=sys.stderr)
+                    print(f"   3D model is still available at: {output_path}", file=sys.stderr)
+                    sys.stderr.flush()
+            except ImportError:
+                print("⚠ MaterialAnything not available. Install dependencies to enable material generation.", file=sys.stderr)
+                sys.stderr.flush()
+            except Exception as e:
+                print(f"⚠ Material generation error: {e}", file=sys.stderr)
+                print(f"   3D model is still available at: {output_path}", file=sys.stderr)
+                sys.stderr.flush()
         
     except Exception as e:
         print(f"Error: {str(e)}", file=sys.stderr)

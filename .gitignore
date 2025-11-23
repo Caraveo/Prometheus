@@ -38,11 +38,17 @@ Prometheus.app/
 
 # Output files
 output/
+materials/
 *.ply
 *.obj
 *.stl
 *.glb
 *.gltf
+*.png
+*.jpg
+*.jpeg
+# Keep screenshots
+!Screenshots/*.png
 
 # macOS
 .DS_Store

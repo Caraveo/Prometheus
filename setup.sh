@@ -56,6 +56,13 @@ echo "📦 Installing Shap-E from GitHub..."
 echo "   This may take a few minutes..."
 pip install git+https://github.com/openai/shap-e.git
 
+# Download MaterialAnything models (optional)
+echo ""
+echo "📦 MaterialAnything models..."
+echo "   To download material generation models, run:"
+echo "   ./download_material_models.sh"
+echo "   (This is optional and can be done later)"
+
 echo ""
 echo "✅ Setup complete!"
 echo ""
