@@ -649,7 +649,7 @@ struct ContentView: View {
                 
                 // Get base directory (same logic as generate3D)
                 let baseDir: String
-                if let bundlePath = Bundle.main.path(forResource: "nerf_generator", ofType: "py") {
+                if Bundle.main.path(forResource: "nerf_generator", ofType: "py") != nil {
                     let bundleURL = Bundle.main.bundleURL
                     baseDir = bundleURL.deletingLastPathComponent().path
                 } else {
