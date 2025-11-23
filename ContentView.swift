@@ -211,6 +211,50 @@ struct ContentView: View {
         }
     }
     
+    private var nerfInputView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("NeRF: Neural Radiance Fields")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.secondary)
+            
+            Text("NeRF reconstructs 3D scenes from multiple images with camera poses.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .padding(.bottom, 4)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Images Directory:")
+                    .font(.system(size: 13, weight: .medium))
+                
+                HStack {
+                    TextField("Path to images directory", text: $nerfImagesDir)
+                        .textFieldStyle(.roundedBorder)
+                    
+                    Button(action: {
+                        let panel = NSOpenPanel()
+                        panel.canChooseFiles = false
+                        panel.canChooseDirectories = true
+                        panel.allowsMultipleSelection = false
+                        panel.canCreateDirectories = true
+                        
+                        if panel.runModal() == .OK {
+                            nerfImagesDir = panel.url?.path ?? ""
+                        }
+                    }) {
+                        Image(systemName: "folder.fill")
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            
+            Text("⚠️ Note: NeRF requires TensorFlow 1.15 and CUDA, which may not work on Apple Silicon. Consider using modern NeRF implementations for M-Series chips.")
+                .font(.system(size: 11))
+                .foregroundColor(.orange)
+                .padding(.top, 4)
+        }
+    }
+    
     private var generateButton: some View {
         Button(action: generate3D) {
             HStack {
