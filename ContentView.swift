@@ -80,6 +80,28 @@ struct ContentView: View {
         }
     }
     
+    private var materialGenerationView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $generateMaterials) {
+                HStack(spacing: 8) {
+                    Image(systemName: "paintbrush.fill")
+                        .foregroundColor(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Generate Materials")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("PBR maps (albedo, roughness, metallic, bump)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .toggleStyle(.switch)
+        }
+        .padding(12)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+    }
+    
     private var inputSectionView: some View {
         VStack(alignment: .leading, spacing: 12) {
             if selectedMode == .textTo3D {
@@ -228,31 +250,69 @@ struct ContentView: View {
             }
             
             if let outputPath = outputPath, !outputPath.isEmpty {
-                HStack {
-                    Image(systemName: outputPath.hasSuffix(".usdz") ? "cube.transparent.fill" : "checkmark.circle.fill")
-                        .foregroundColor(outputPath.hasSuffix(".usdz") ? .blue : .green)
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Output: \(URL(fileURLWithPath: outputPath).lastPathComponent)")
-                            .font(.system(size: 13))
-                            .foregroundColor(.secondary)
+                VStack(spacing: 8) {
+                    HStack {
+                        Image(systemName: outputPath.hasSuffix(".usdz") ? "cube.transparent.fill" : "checkmark.circle.fill")
+                            .foregroundColor(outputPath.hasSuffix(".usdz") ? .blue : .green)
                         
-                        if outputPath.hasSuffix(".usdz") {
-                            Text("Ready for iPhone/Vision Pro")
-                                .font(.system(size: 11))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Output: \(URL(fileURLWithPath: outputPath).lastPathComponent)")
+                                .font(.system(size: 13))
+                                .foregroundColor(.secondary)
+                            
+                            if outputPath.hasSuffix(".usdz") {
+                                Text("Ready for iPhone/Vision Pro")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            NSWorkspace.shared.selectFile(outputPath, inFileViewerRootedAtPath: "")
+                        }) {
+                            Image(systemName: "folder.fill")
                                 .foregroundColor(.blue)
                         }
+                        .buttonStyle(.plain)
                     }
                     
-                    Spacer()
-                    
-                    Button(action: {
-                        NSWorkspace.shared.selectFile(outputPath, inFileViewerRootedAtPath: "")
-                    }) {
-                        Image(systemName: "folder.fill")
-                            .foregroundColor(.blue)
+                    // Material maps display
+                    if !materialPaths.isEmpty {
+                        Divider()
+                        
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Material Maps:")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.secondary)
+                            
+                            ForEach(Array(materialPaths.keys.sorted()), id: \.self) { key in
+                                if let path = materialPaths[key] {
+                                    HStack {
+                                        Image(systemName: "paintbrush.fill")
+                                            .foregroundColor(.orange)
+                                            .font(.system(size: 10))
+                                        
+                                        Text(key.capitalized)
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        
+                                        Spacer()
+                                        
+                                        Button(action: {
+                                            NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+                                        }) {
+                                            Image(systemName: "folder.fill")
+                                                .foregroundColor(.blue)
+                                                .font(.system(size: 10))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding(12)
                 .background(Color(NSColor.controlBackgroundColor))
@@ -381,7 +441,7 @@ struct ContentView: View {
                 
                 // Check if virtual environment exists
                 if !FileManager.default.fileExists(atPath: pythonExecutable) {
-                    continuation.resume(returning: (false, nil, "Python environment not found at \(envPath). Please create it first."))
+                    continuation.resume(returning: (false, nil, "Python environment not found at \(envPath). Please create it first.", [:]))
                     return
                 }
                 
@@ -533,7 +593,7 @@ struct ContentView: View {
                 } catch {
                     outputHandle.readabilityHandler = nil
                     errorHandle.readabilityHandler = nil
-                    continuation.resume(throwing: error)
+                    continuation.resume(returning: (false, nil, error.localizedDescription, [:]))
                 }
             }
         }
