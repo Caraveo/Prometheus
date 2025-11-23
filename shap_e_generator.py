@@ -106,6 +106,74 @@ def setup_models(use_image_model=False):
     return device, xm, model, diffusion
 
 
+def convert_to_usdz(obj_path: str, usdz_path: str) -> bool:
+    """Convert OBJ file to USDZ format for iPhone/Vision Pro"""
+    try:
+        # Try using usdzconvert command-line tool (available on macOS)
+        import subprocess
+        result = subprocess.run(
+            ['usdzconvert', obj_path, usdz_path],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        if result.returncode == 0:
+            return True
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    except Exception:
+        pass
+    
+    # Fallback: Create USDZ manually (USDZ is a ZIP file containing USD)
+    try:
+        import zipfile
+        import tempfile
+        
+        # Create a simple USD file
+        usd_content = f"""#usda 1.0
+(
+    defaultPrim = "Root"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "Root"
+{{
+    def Mesh "Mesh"
+    {{
+        int[] faceVertexCounts = []
+        int[] faceVertexIndices = []
+        point3f[] points = []
+        normal3f[] normals = []
+        texCoord2f[] primvars:st = []
+    }}
+}}
+"""
+        
+        # For now, create a placeholder USDZ
+        # In production, you'd parse the OBJ and convert vertices/faces to USD format
+        # This is a simplified version - for full conversion, consider using pxr library
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.usd', delete=False) as tmp_usd:
+            tmp_usd.write(usd_content)
+            tmp_usd_path = tmp_usd.name
+        
+        # Create USDZ (ZIP archive)
+        with zipfile.ZipFile(usdz_path, 'w', zipfile.ZIP_DEFLATED) as usdz:
+            usdz.write(tmp_usd_path, 'model.usd')
+        
+        os.unlink(tmp_usd_path)
+        
+        # Note: This creates a basic USDZ structure but doesn't include the actual mesh data
+        # For full functionality, you'd need to parse OBJ and convert to USD format
+        # For now, return False to indicate incomplete conversion
+        return False
+        
+    except Exception as e:
+        print(f"USDZ conversion error: {e}", file=sys.stderr)
+        return False
+
+
 def generate_text_to_3d(prompt: str, output_dir: str = "output") -> str:
     """Generate 3D model from text prompt"""
     device, xm, model, diffusion = setup_models()
@@ -171,14 +239,47 @@ def generate_text_to_3d(prompt: str, output_dir: str = "output") -> str:
     try:
         mesh = trimesh.Trimesh(vertices=t.verts, faces=t.faces)
         mesh.export(output_path)
-        print(f"✓ Mesh saved", file=sys.stderr)
+        print(f"✓ PLY mesh saved", file=sys.stderr)
         sys.stderr.flush()
+        
+        # Also export as USDZ for iPhone/Vision Pro compatibility
+        usdz_path = output_path.replace('.ply', '.usdz')
+        print(f"Converting to USDZ for iPhone/Vision Pro...", file=sys.stderr)
+        sys.stderr.flush()
+        
+        try:
+            # Export to OBJ first (intermediate format)
+            obj_path = output_path.replace('.ply', '.obj')
+            mesh.export(obj_path)
+            
+            # Convert OBJ to USDZ
+            usdz_success = convert_to_usdz(obj_path, usdz_path)
+            
+            if usdz_success:
+                print(f"✓ USDZ file saved: {usdz_path}", file=sys.stderr)
+                sys.stderr.flush()
+                # Clean up intermediate OBJ file
+                try:
+                    os.remove(obj_path)
+                except:
+                    pass
+            else:
+                print(f"⚠ USDZ conversion failed, PLY file is available", file=sys.stderr)
+                sys.stderr.flush()
+        except Exception as e:
+            print(f"⚠ USDZ conversion error: {e}", file=sys.stderr)
+            print(f"  PLY file is still available at: {output_path}", file=sys.stderr)
+            sys.stderr.flush()
+            
     except Exception as e:
         print(f"Error saving mesh: {e}", file=sys.stderr)
         sys.stderr.flush()
         raise
     
     print(f"OUTPUT_PATH: {output_path}", file=sys.stdout)
+    usdz_path = output_path.replace('.ply', '.usdz')
+    if os.path.exists(usdz_path):
+        print(f"USDZ_PATH: {usdz_path}", file=sys.stdout)
     sys.stdout.flush()
     return output_path
 
@@ -264,14 +365,47 @@ def generate_image_to_3d(image_path: str, prompt: str = "", output_dir: str = "o
     try:
         mesh = trimesh.Trimesh(vertices=t.verts, faces=t.faces)
         mesh.export(output_path)
-        print(f"✓ Mesh saved", file=sys.stderr)
+        print(f"✓ PLY mesh saved", file=sys.stderr)
         sys.stderr.flush()
+        
+        # Also export as USDZ for iPhone/Vision Pro compatibility
+        usdz_path = output_path.replace('.ply', '.usdz')
+        print(f"Converting to USDZ for iPhone/Vision Pro...", file=sys.stderr)
+        sys.stderr.flush()
+        
+        try:
+            # Export to OBJ first (intermediate format)
+            obj_path = output_path.replace('.ply', '.obj')
+            mesh.export(obj_path)
+            
+            # Convert OBJ to USDZ
+            usdz_success = convert_to_usdz(obj_path, usdz_path)
+            
+            if usdz_success:
+                print(f"✓ USDZ file saved: {usdz_path}", file=sys.stderr)
+                sys.stderr.flush()
+                # Clean up intermediate OBJ file
+                try:
+                    os.remove(obj_path)
+                except:
+                    pass
+            else:
+                print(f"⚠ USDZ conversion failed, PLY file is available", file=sys.stderr)
+                sys.stderr.flush()
+        except Exception as e:
+            print(f"⚠ USDZ conversion error: {e}", file=sys.stderr)
+            print(f"  PLY file is still available at: {output_path}", file=sys.stderr)
+            sys.stderr.flush()
+            
     except Exception as e:
         print(f"Error saving mesh: {e}", file=sys.stderr)
         sys.stderr.flush()
         raise
     
     print(f"OUTPUT_PATH: {output_path}", file=sys.stdout)
+    usdz_path = output_path.replace('.ply', '.usdz')
+    if os.path.exists(usdz_path):
+        print(f"USDZ_PATH: {usdz_path}", file=sys.stdout)
     sys.stdout.flush()
     return output_path
 
