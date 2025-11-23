@@ -14,6 +14,7 @@ htmlcov/
 
 # Shap-E Models and Cache (automatically downloaded)
 shap_e_model_cache/
+**/shap_e_model_cache/
 *.pt
 *.pt.lock
 *.pt.tmp
