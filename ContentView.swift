@@ -593,7 +593,7 @@ struct ContentView: View {
                 } catch {
                     outputHandle.readabilityHandler = nil
                     errorHandle.readabilityHandler = nil
-                    continuation.resume(returning: (false, nil, error.localizedDescription, [:]))
+                    continuation.resume(throwing: error)
                 }
             }
         }
