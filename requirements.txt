@@ -17,5 +17,7 @@ transformers
 open-clip-torch
 omegaconf
 accelerate
+# Note: pytorch3d and kaolin are complex dependencies that may require special installation
+# They are needed for full MaterialAnything functionality but are optional
 # Note: shap-e must be installed from GitHub (see setup.sh)
 
