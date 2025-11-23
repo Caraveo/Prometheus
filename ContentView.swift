@@ -224,12 +224,20 @@ struct ContentView: View {
             
             if let outputPath = outputPath, !outputPath.isEmpty {
                 HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
+                    Image(systemName: outputPath.hasSuffix(".usdz") ? "cube.transparent.fill" : "checkmark.circle.fill")
+                        .foregroundColor(outputPath.hasSuffix(".usdz") ? .blue : .green)
                     
-                    Text("Output: \(URL(fileURLWithPath: outputPath).lastPathComponent)")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Output: \(URL(fileURLWithPath: outputPath).lastPathComponent)")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                        
+                        if outputPath.hasSuffix(".usdz") {
+                            Text("Ready for iPhone/Vision Pro")
+                                .font(.system(size: 11))
+                                .foregroundColor(.blue)
+                        }
+                    }
                     
                     Spacer()
                     
@@ -452,6 +460,7 @@ struct ContentView: View {
                         let lines = output.components(separatedBy: .newlines)
                         var outputPath: String? = nil
                         
+                        var usdzPath: String? = nil
                         for line in lines {
                             if line.contains("OUTPUT_PATH:") {
                                 let path = line.components(separatedBy: "OUTPUT_PATH:").last?.trimmingCharacters(in: .whitespaces) ?? ""
@@ -463,8 +472,21 @@ struct ContentView: View {
                                         outputPath = (scriptDir as NSString).appendingPathComponent(path)
                                     }
                                 }
-                                break
+                            } else if line.contains("USDZ_PATH:") {
+                                let path = line.components(separatedBy: "USDZ_PATH:").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                                if !path.isEmpty {
+                                    if (path as NSString).isAbsolutePath {
+                                        usdzPath = path
+                                    } else {
+                                        usdzPath = (scriptDir as NSString).appendingPathComponent(path)
+                                    }
+                                }
                             }
+                        }
+                        
+                        // If USDZ exists, prefer showing it (for iPhone/Vision Pro)
+                        if let usdzPath = usdzPath, FileManager.default.fileExists(atPath: usdzPath) {
+                            outputPath = usdzPath
                         }
                         
                         continuation.resume(returning: (true, outputPath, nil))
