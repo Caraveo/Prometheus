@@ -1,0 +1,66 @@
+# Python
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Shap-E Models and Cache (automatically downloaded)
+shap_e_model_cache/
+*.pt
+*.pt.lock
+*.pt.tmp
+*.safetensors
+*.ckpt
+*.pth
+*.h5
+*.weights
+
+# Model config locks
+*.yaml.lock
+*.json.lock
+
+# Swift
+.build/
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+*.swiftpm/
+Prometheus.app/
+
+# Output files
+output/
+*.ply
+*.obj
+*.stl
+*.glb
+*.gltf
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+test_output.log
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+

@@ -1,0 +1,488 @@
+import SwiftUI
+
+struct ContentView: View {
+    @State private var prompt: String = ""
+    @State private var selectedMode: GenerationMode = .textTo3D
+    @State private var isGenerating: Bool = false
+    @State private var statusMessage: String = ""
+    @State private var outputPath: String? = nil
+    @State private var dragOver: Bool = false
+    @State private var droppedImagePath: String = ""
+    
+    enum GenerationMode: String, CaseIterable {
+        case textTo3D = "Text to 3D"
+        case imageTo3D = "Image to 3D"
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            headerView
+            
+            Divider()
+            
+            // Main Content
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Mode Selection
+                    modeSelectionView
+                    
+                    // Input Section
+                    inputSectionView
+                    
+                    // Generate Button
+                    generateButton
+                    
+                    // Status and Output
+                    statusView
+                }
+                .padding(32)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(width: 600, height: 700)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+    
+    private var headerView: some View {
+        HStack {
+            Image(systemName: "cube.transparent")
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundColor(.blue)
+            
+            Text("Prometheus 3D Generator")
+                .font(.system(size: 20, weight: .bold))
+            
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    private var modeSelectionView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Generation Mode")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.secondary)
+            
+            Picker("Mode", selection: $selectedMode) {
+                ForEach(GenerationMode.allCases, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+    
+    private var inputSectionView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if selectedMode == .textTo3D {
+                textInputView
+            } else {
+                imageInputView
+            }
+        }
+    }
+    
+    private var textInputView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Enter your prompt")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.secondary)
+            
+            TextEditor(text: $prompt)
+                .font(.system(size: 14))
+                .frame(height: 120)
+                .padding(12)
+                .background(Color(NSColor.textBackgroundColor))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                )
+                .overlay(
+                    Group {
+                        if prompt.isEmpty {
+                            Text("Describe the 3D object you want to create...")
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 16)
+                                .padding(.top, 20)
+                                .allowsHitTesting(false)
+                        }
+                    },
+                    alignment: .topLeading
+                )
+        }
+    }
+    
+    private var imageInputView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Drop an image or enter a prompt")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.secondary)
+            
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(dragOver ? Color.blue.opacity(0.1) : Color(NSColor.controlBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(
+                                dragOver ? Color.blue : Color(NSColor.separatorColor),
+                                lineWidth: dragOver ? 2 : 1
+                            )
+                    )
+                    .frame(height: 200)
+                
+                VStack(spacing: 12) {
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 40))
+                        .foregroundColor(.secondary)
+                    
+                    if droppedImagePath.isEmpty {
+                        Text("Drag and drop an image here")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Image: \(URL(fileURLWithPath: droppedImagePath).lastPathComponent)")
+                            .font(.system(size: 12))
+                            .foregroundColor(.blue)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .onDrop(of: [.image], isTargeted: $dragOver) { providers in
+                handleImageDrop(providers: providers)
+            }
+            
+            TextEditor(text: $prompt)
+                .font(.system(size: 14))
+                .frame(height: 80)
+                .padding(12)
+                .background(Color(NSColor.textBackgroundColor))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                )
+                .overlay(
+                    Group {
+                        if prompt.isEmpty {
+                            Text("Optional: Additional prompt details...")
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 16)
+                                .padding(.top, 12)
+                                .allowsHitTesting(false)
+                        }
+                    },
+                    alignment: .topLeading
+                )
+        }
+    }
+    
+    private var generateButton: some View {
+        Button(action: generate3D) {
+            HStack {
+                if isGenerating {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .progressViewStyle(.circular)
+                } else {
+                    Image(systemName: "sparkles")
+                }
+                
+                Text(isGenerating ? "Generating..." : "Generate 3D Model")
+                    .font(.system(size: 16, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background(isGenerating ? Color.gray : Color.blue)
+            .foregroundColor(.white)
+            .cornerRadius(10)
+        }
+        .disabled(isGenerating || (selectedMode == .textTo3D && prompt.isEmpty) || (selectedMode == .imageTo3D && droppedImagePath.isEmpty))
+        .buttonStyle(.plain)
+    }
+    
+    private var statusView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !statusMessage.isEmpty {
+                HStack {
+                    Image(systemName: statusMessage.contains("Error") ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                        .foregroundColor(statusMessage.contains("Error") ? .red : .blue)
+                    
+                    Text(statusMessage)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                }
+                .padding(12)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+            }
+            
+            if let outputPath = outputPath, !outputPath.isEmpty {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    
+                    Text("Output: \(URL(fileURLWithPath: outputPath).lastPathComponent)")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        NSWorkspace.shared.selectFile(outputPath, inFileViewerRootedAtPath: "")
+                    }) {
+                        Image(systemName: "folder.fill")
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(12)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+            }
+        }
+    }
+    
+    private func handleImageDrop(providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        
+        if provider.canLoadObject(ofClass: NSImage.self) {
+            provider.loadObject(ofClass: NSImage.self) { image, error in
+                DispatchQueue.main.async {
+                    if let nsImage = image as? NSImage {
+                        saveDroppedImage(nsImage)
+                    }
+                }
+            }
+            return true
+        }
+        
+        if provider.hasItemConformingToTypeIdentifier("public.file-url") {
+            provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, error in
+                if let data = item as? Data,
+                   let url = URL(dataRepresentation: data, relativeTo: nil) {
+                    DispatchQueue.main.async {
+                        droppedImagePath = url.path
+                    }
+                }
+            }
+            return true
+        }
+        
+        return false
+    }
+    
+    private func saveDroppedImage(_ image: NSImage) {
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileName = "input_image_\(UUID().uuidString).png"
+        let fileURL = tempDir.appendingPathComponent(fileName)
+        
+        if let tiffData = image.tiffRepresentation,
+           let bitmapImage = NSBitmapImageRep(data: tiffData),
+           let pngData = bitmapImage.representation(using: .png, properties: [:]) {
+            try? pngData.write(to: fileURL)
+            droppedImagePath = fileURL.path
+        }
+    }
+    
+    private func generate3D() {
+        isGenerating = true
+        statusMessage = "Initializing generation..."
+        outputPath = nil
+        
+        // Get the script path - try bundle first, then current directory
+        let scriptName = "shap_e_generator.py"
+        let pythonScript: String
+        if let bundlePath = Bundle.main.path(forResource: "shap_e_generator", ofType: "py") {
+            pythonScript = bundlePath
+        } else {
+            let currentDir = FileManager.default.currentDirectoryPath
+            pythonScript = (currentDir as NSString).appendingPathComponent(scriptName)
+        }
+        
+        // Get environment path
+        let currentDir = FileManager.default.currentDirectoryPath
+        let envPath = (currentDir as NSString).appendingPathComponent("env")
+        
+        Task {
+            do {
+                let result = try await runPythonScript(
+                    scriptPath: pythonScript,
+                    envPath: envPath,
+                    mode: selectedMode,
+                    prompt: prompt,
+                    imagePath: selectedMode == .imageTo3D ? droppedImagePath : nil
+                )
+                
+                await MainActor.run {
+                    isGenerating = false
+                    if result.success {
+                        statusMessage = "3D model generated successfully!"
+                        outputPath = result.outputPath
+                    } else {
+                        statusMessage = "Error: \(result.error ?? "Unknown error")"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isGenerating = false
+                    statusMessage = "Error: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    private func runPythonScript(
+        scriptPath: String,
+        envPath: String,
+        mode: GenerationMode,
+        prompt: String,
+        imagePath: String?
+    ) async throws -> (success: Bool, outputPath: String?, error: String?) {
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                // Create a status update callback
+                let updateStatus: (String) -> Void = { message in
+                    Task { @MainActor in
+                        self.statusMessage = message
+                    }
+                }
+                let process = Process()
+                let pipe = Pipe()
+                let errorPipe = Pipe()
+                
+                // Use Python from the virtual environment
+                let pythonExecutable = "\(envPath)/bin/python3"
+                
+                // Check if virtual environment exists
+                if !FileManager.default.fileExists(atPath: pythonExecutable) {
+                    continuation.resume(returning: (false, nil, "Python environment not found at \(envPath). Please create it first."))
+                    return
+                }
+                
+                process.executableURL = URL(fileURLWithPath: pythonExecutable)
+                process.standardOutput = pipe
+                process.standardError = errorPipe
+                
+                var arguments = [scriptPath]
+                arguments.append("--mode")
+                arguments.append(mode == .textTo3D ? "text" : "image")
+                arguments.append("--prompt")
+                arguments.append(prompt)
+                
+                if let imagePath = imagePath {
+                    arguments.append("--image")
+                    arguments.append(imagePath)
+                }
+                
+                process.arguments = arguments
+                
+                // Set working directory to script location
+                let scriptDir = (scriptPath as NSString).deletingLastPathComponent
+                process.currentDirectoryURL = URL(fileURLWithPath: scriptDir)
+                
+                // Create output directory if it doesn't exist
+                let outputDir = (scriptDir as NSString).appendingPathComponent("output")
+                try? FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
+                
+                // Set up notification observers for real-time output
+                var errorLines: [String] = []
+                
+                let outputHandle = pipe.fileHandleForReading
+                let errorHandle = errorPipe.fileHandleForReading
+                
+                // Read stderr in real-time for progress updates
+                errorHandle.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    if data.isEmpty { return }
+                    
+                    if let text = String(data: data, encoding: .utf8) {
+                        let lines = text.components(separatedBy: .newlines).filter { !$0.isEmpty }
+                        errorLines.append(contentsOf: lines)
+                        
+                        // Update status with latest progress message
+                        if let lastLine = lines.last, !lastLine.isEmpty {
+                            // Update status message with progress
+                            if lastLine.contains("Loading") || lastLine.contains("Loading Shap-E") {
+                                updateStatus("Loading models...")
+                            } else if lastLine.contains("Generating") {
+                                updateStatus("Generating 3D model...")
+                            } else if lastLine.contains("Sampling") || lastLine.contains("Starting diffusion") {
+                                updateStatus("Running diffusion sampling...")
+                            } else if lastLine.contains("Decoding") {
+                                updateStatus("Decoding mesh...")
+                            } else if lastLine.contains("Saving") {
+                                updateStatus("Saving mesh...")
+                            } else if lastLine.contains("✓") {
+                                // Keep the checkmark message briefly
+                                updateStatus(lastLine)
+                            } else if !lastLine.contains("Using device") && !lastLine.contains("FutureWarning") {
+                                // Update with other progress messages (skip warnings)
+                                updateStatus(lastLine)
+                            }
+                        }
+                    }
+                }
+                
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    
+                    // Close handles
+                    outputHandle.readabilityHandler = nil
+                    errorHandle.readabilityHandler = nil
+                    
+                    let outputData = outputHandle.readDataToEndOfFile()
+                    let remainingErrorData = errorHandle.readDataToEndOfFile()
+                    
+                    let output = String(data: outputData, encoding: .utf8) ?? ""
+                    if let remainingError = String(data: remainingErrorData, encoding: .utf8), !remainingError.isEmpty {
+                        errorLines.append(contentsOf: remainingError.components(separatedBy: .newlines).filter { !$0.isEmpty })
+                    }
+                    
+                    let errorOutput = errorLines.joined(separator: "\n")
+                    
+                    if process.terminationStatus == 0 {
+                        // Extract output path from the output
+                        let lines = output.components(separatedBy: .newlines)
+                        var outputPath: String? = nil
+                        
+                        for line in lines {
+                            if line.contains("OUTPUT_PATH:") {
+                                let path = line.components(separatedBy: "OUTPUT_PATH:").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                                // Convert relative path to absolute if needed
+                                if !path.isEmpty {
+                                    if (path as NSString).isAbsolutePath {
+                                        outputPath = path
+                                    } else {
+                                        outputPath = (scriptDir as NSString).appendingPathComponent(path)
+                                    }
+                                }
+                                break
+                            }
+                        }
+                        
+                        continuation.resume(returning: (true, outputPath, nil))
+                    } else {
+                        let errorMsg = errorOutput.isEmpty ? "Process failed with status \(process.terminationStatus)" : errorOutput
+                        continuation.resume(returning: (false, nil, errorMsg))
+                    }
+                } catch {
+                    outputHandle.readabilityHandler = nil
+                    errorHandle.readabilityHandler = nil
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+}
+
+#Preview {
+    ContentView()
+}
+

@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""
+OpenAI Shap-E 3D Model Generator
+Supports text-to-3D and image-to-3D generation
+"""
+
+import argparse
+import os
+import sys
+from pathlib import Path
+import json
+
+try:
+    import torch
+    import numpy as np
+    
+    # Force float32 for MPS compatibility (MPS doesn't support float64)
+    if torch.backends.mps.is_available():
+        torch.set_default_dtype(torch.float32)
+        
+        # Patch numpy conversion to use float32
+        original_from_numpy = torch.from_numpy
+        def patched_from_numpy(arr):
+            if arr.dtype == np.float64:
+                arr = arr.astype(np.float32)
+            return original_from_numpy(arr)
+        torch.from_numpy = patched_from_numpy
+    
+    from shap_e.diffusion.sample import sample_latents
+    from shap_e.diffusion.gaussian_diffusion import diffusion_from_config
+    from shap_e.models.download import load_model, load_config
+    from shap_e.util.image_util import load_image
+    from shap_e.util.notebooks import decode_latent_mesh
+    import trimesh
+    
+    # Monkey patch Shap-E's _extract_into_tensor to use float32 on MPS
+    if torch.backends.mps.is_available():
+        from shap_e.diffusion import gaussian_diffusion
+        original_extract = gaussian_diffusion._extract_into_tensor
+        
+        def patched_extract_into_tensor(arr, timesteps, broadcast_shape):
+            """Patched version that converts to float32 for MPS compatibility"""
+            import torch as th
+            res = th.from_numpy(arr).to(device=timesteps.device)
+            # Convert to float32 if on MPS
+            if timesteps.device.type == 'mps':
+                res = res.float()
+            else:
+                res = res.float()
+            res = res[timesteps].float()
+            while len(res.shape) < len(broadcast_shape):
+                res = res[..., None]
+            return res.expand(broadcast_shape)
+        
+        gaussian_diffusion._extract_into_tensor = patched_extract_into_tensor
+        
+except ImportError as e:
+    print(f"Error importing required libraries: {e}", file=sys.stderr)
+    print("Please install requirements: pip install -r requirements.txt", file=sys.stderr)
+    sys.exit(1)
+
+
+def setup_models(use_image_model=False):
+    """Load Shap-E models"""
+    # Determine device: MPS (Apple Silicon) > CUDA > CPU
+    # MPS is used with float32 forced for compatibility
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        device = torch.device('mps')
+        print("Using device: MPS (Apple Silicon GPU) with float32", file=sys.stderr)
+        sys.stderr.flush()
+    elif torch.cuda.is_available():
+        device = torch.device('cuda')
+        print("Using device: CUDA", file=sys.stderr)
+        sys.stderr.flush()
+    else:
+        device = torch.device('cpu')
+        print("Using device: CPU", file=sys.stderr)
+        sys.stderr.flush()
+    
+    # Load models
+    print("Loading Shap-E models...", file=sys.stderr)
+    sys.stderr.flush()
+    
+    try:
+        xm = load_model('transmitter', device=device)
+        print("✓ Transmitter model loaded", file=sys.stderr)
+        sys.stderr.flush()
+        
+        if use_image_model:
+            model = load_model('image300M', device=device)
+            print("✓ Image model loaded", file=sys.stderr)
+        else:
+            model = load_model('text300M', device=device)
+            print("✓ Text model loaded", file=sys.stderr)
+        sys.stderr.flush()
+        
+        diffusion = diffusion_from_config(load_config('diffusion'))
+        print("✓ Diffusion config loaded", file=sys.stderr)
+        sys.stderr.flush()
+        
+    except Exception as e:
+        print(f"Error loading models: {e}", file=sys.stderr)
+        sys.stderr.flush()
+        raise
+    
+    return device, xm, model, diffusion
+
+
+def generate_text_to_3d(prompt: str, output_dir: str = "output") -> str:
+    """Generate 3D model from text prompt"""
+    device, xm, model, diffusion = setup_models()
+    
+    print(f"Generating 3D model from prompt: {prompt}", file=sys.stderr)
+    sys.stderr.flush()
+    
+    # Generate latents
+    batch_size = 1
+    guidance_scale = 15.0
+    
+    print("Starting diffusion sampling (this may take a few minutes)...", file=sys.stderr)
+    sys.stderr.flush()
+    
+    try:
+        latents = sample_latents(
+            batch_size=batch_size,
+            model=model,
+            diffusion=diffusion,
+            guidance_scale=guidance_scale,
+            model_kwargs=dict(texts=[prompt] * batch_size),
+            progress=True,
+            clip_denoised=True,
+            use_fp16=True,
+            use_karras=True,
+            karras_steps=64,
+            sigma_min=1e-3,
+            sigma_max=160,
+            s_churn=0,
+        )
+        print("✓ Sampling complete", file=sys.stderr)
+        sys.stderr.flush()
+    except Exception as e:
+        print(f"Error during sampling: {e}", file=sys.stderr)
+        sys.stderr.flush()
+        raise
+    
+    # Decode to mesh
+    print("Decoding mesh...", file=sys.stderr)
+    sys.stderr.flush()
+    
+    try:
+        t = decode_latent_mesh(xm, latents[0]).tri_mesh()
+        print("✓ Mesh decoded", file=sys.stderr)
+        sys.stderr.flush()
+    except Exception as e:
+        print(f"Error decoding mesh: {e}", file=sys.stderr)
+        sys.stderr.flush()
+        raise
+    
+    # Save mesh
+    os.makedirs(output_dir, exist_ok=True)
+    # Sanitize filename
+    safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
+    safe_prompt = safe_prompt.replace(' ', '_')
+    if not safe_prompt:
+        safe_prompt = "model"
+    output_path = os.path.join(output_dir, f"{safe_prompt}.ply")
+    
+    print(f"Saving mesh to {output_path}...", file=sys.stderr)
+    sys.stderr.flush()
+    
+    try:
+        mesh = trimesh.Trimesh(vertices=t.verts, faces=t.faces)
+        mesh.export(output_path)
+        print(f"✓ Mesh saved", file=sys.stderr)
+        sys.stderr.flush()
+    except Exception as e:
+        print(f"Error saving mesh: {e}", file=sys.stderr)
+        sys.stderr.flush()
+        raise
+    
+    print(f"OUTPUT_PATH: {output_path}", file=sys.stdout)
+    sys.stdout.flush()
+    return output_path
+
+
+def generate_image_to_3d(image_path: str, prompt: str = "", output_dir: str = "output") -> str:
+    """Generate 3D model from image"""
+    device, xm, model, diffusion = setup_models(use_image_model=True)
+    
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Image not found: {image_path}")
+    
+    print(f"Generating 3D model from image: {image_path}", file=sys.stderr)
+    sys.stderr.flush()
+    
+    # Load image
+    print("Loading image...", file=sys.stderr)
+    sys.stderr.flush()
+    image = load_image(image_path)
+    print("✓ Image loaded", file=sys.stderr)
+    sys.stderr.flush()
+    
+    # Generate latents
+    batch_size = 1
+    guidance_scale = 15.0
+    
+    model_kwargs = dict(images=[image] * batch_size)
+    if prompt:
+        model_kwargs['texts'] = [prompt] * batch_size
+    else:
+        model_kwargs['texts'] = [""] * batch_size
+    
+    print("Starting diffusion sampling (this may take a few minutes)...", file=sys.stderr)
+    sys.stderr.flush()
+    
+    try:
+        latents = sample_latents(
+            batch_size=batch_size,
+            model=model,
+            diffusion=diffusion,
+            guidance_scale=guidance_scale,
+            model_kwargs=model_kwargs,
+            progress=True,
+            clip_denoised=True,
+            use_fp16=True,
+            use_karras=True,
+            karras_steps=64,
+            sigma_min=1e-3,
+            sigma_max=160,
+            s_churn=0,
+        )
+        print("✓ Sampling complete", file=sys.stderr)
+        sys.stderr.flush()
+    except Exception as e:
+        print(f"Error during sampling: {e}", file=sys.stderr)
+        sys.stderr.flush()
+        raise
+    
+    # Decode to mesh
+    print("Decoding mesh...", file=sys.stderr)
+    sys.stderr.flush()
+    
+    try:
+        t = decode_latent_mesh(xm, latents[0]).tri_mesh()
+        print("✓ Mesh decoded", file=sys.stderr)
+        sys.stderr.flush()
+    except Exception as e:
+        print(f"Error decoding mesh: {e}", file=sys.stderr)
+        sys.stderr.flush()
+        raise
+    
+    # Save mesh
+    os.makedirs(output_dir, exist_ok=True)
+    image_name = Path(image_path).stem
+    # Sanitize filename
+    safe_name = "".join(c for c in image_name if c.isalnum() or c in (' ', '-', '_')).strip()
+    if not safe_name:
+        safe_name = "model"
+    output_path = os.path.join(output_dir, f"{safe_name}.ply")
+    
+    print(f"Saving mesh to {output_path}...", file=sys.stderr)
+    sys.stderr.flush()
+    
+    try:
+        mesh = trimesh.Trimesh(vertices=t.verts, faces=t.faces)
+        mesh.export(output_path)
+        print(f"✓ Mesh saved", file=sys.stderr)
+        sys.stderr.flush()
+    except Exception as e:
+        print(f"Error saving mesh: {e}", file=sys.stderr)
+        sys.stderr.flush()
+        raise
+    
+    print(f"OUTPUT_PATH: {output_path}", file=sys.stdout)
+    sys.stdout.flush()
+    return output_path
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Generate 3D models using OpenAI Shap-E')
+    parser.add_argument('--mode', choices=['text', 'image'], required=True,
+                        help='Generation mode: text or image')
+    parser.add_argument('--prompt', type=str, required=True,
+                        help='Text prompt for generation')
+    parser.add_argument('--image', type=str, default=None,
+                        help='Path to input image (required for image mode)')
+    parser.add_argument('--output', type=str, default='output',
+                        help='Output directory for generated models')
+    
+    args = parser.parse_args()
+    
+    try:
+        if args.mode == 'text':
+            output_path = generate_text_to_3d(args.prompt, args.output)
+        elif args.mode == 'image':
+            if not args.image:
+                print("Error: --image is required for image mode", file=sys.stderr)
+                sys.exit(1)
+            output_path = generate_image_to_3d(args.image, args.prompt, args.output)
+        
+        print(f"Successfully generated 3D model: {output_path}", file=sys.stderr)
+        
+    except Exception as e:
+        print(f"Error: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
+
