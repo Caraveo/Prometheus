@@ -1,16 +1,18 @@
 # Prometheus - 3D Model Generator
 
-A beautiful macOS application that uses OpenAI Shap-E to generate 3D models from text prompts or images.
+A beautiful native macOS application (optimized for Apple Silicon M-Series chips) that uses OpenAI Shap-E to generate 3D models from text prompts or images, with optional PBR material generation.
 
 ## What It Does
 
-Prometheus is a native macOS app that brings the power of OpenAI's Shap-E 3D generation to your desktop. With a beautiful SwiftUI interface, you can:
+Prometheus is a native macOS app optimized for Apple Silicon (M1, M2, M3, M4) that brings the power of OpenAI's Shap-E 3D generation to your desktop. With a beautiful SwiftUI interface, you can:
 
 - **Generate 3D models from text descriptions** - Simply describe what you want and get a 3D model
 - **Convert images to 3D models** - Upload an image and transform it into a 3D object
-- **Export in standard formats** - Models are saved as PLY files compatible with Blender, MeshLab, and other 3D software
+- **Generate PBR materials** - Optional material generation creates albedo, roughness, metallic, and bump maps for your models
+- **Export in standard formats** - Models are saved as PLY files and USDZ files (for iPhone/Vision Pro compatibility)
+- **Native Apple Silicon performance** - Optimized for M-Series chips with MPS (Metal Performance Shaders) acceleration
 
-The app uses a Python backend powered by OpenAI Shap-E, providing state-of-the-art text-to-3D and image-to-3D generation capabilities.
+The app uses a Python backend powered by OpenAI Shap-E, providing state-of-the-art text-to-3D and image-to-3D generation capabilities. Material generation is powered by MaterialAnything for high-quality PBR textures.
 
 ## Examples
 
@@ -27,13 +29,18 @@ Here are some example 3D models generated with Prometheus:
 - 🎨 Beautiful, modern SwiftUI interface
 - 📝 Text-to-3D generation
 - 🖼️ Image-to-3D generation
+- 🎨 **PBR Material Generation** - Generate albedo, roughness, metallic, and bump maps (optional)
+- 🚀 **Native Apple Silicon Support** - Optimized for M1/M2/M3/M4 chips with MPS acceleration
+- 📱 USDZ export for iPhone and Vision Pro compatibility
 - 🐍 Python backend integration
 - ⚡ Real-time generation status
 - 📁 Easy output file management
 
 ## Prerequisites
 
-- macOS 13.0 or later
+- **macOS 13.0 or later**
+- **Apple Silicon (M1/M2/M3/M4)** - Optimized for native performance with MPS acceleration
+  - Intel Macs supported but may be slower (CPU mode)
 - Xcode 15.0 or later
 - Python 3.9, 3.10, or 3.11 (recommended - Shap-E compatibility)
   - Note: Python 3.12+ may have compatibility issues
@@ -81,6 +88,16 @@ pip install git+https://github.com/openai/shap-e.git
 ```
 
 **Note:** Shap-E must be installed from GitHub as it's not available on PyPI.
+
+### 2.5. Download MaterialAnything Models (Optional)
+
+To enable PBR material generation, download the MaterialAnything models:
+
+```bash
+./download_material_models.sh
+```
+
+This will download the material estimator and refiner models from HuggingFace (~2-3GB). Material generation works without these models but will use simplified mode.
 
 ### 3. Set OpenAI API Key (Optional but Recommended)
 
@@ -135,18 +152,22 @@ swift run Prometheus
 1. **Text-to-3D Mode:**
    - Select "Text to 3D" mode
    - Enter a descriptive prompt (e.g., "a red sports car", "a wooden chair")
+   - (Optional) Toggle "Generate Materials" to create PBR material maps
    - Click "Generate 3D Model"
 
 2. **Image-to-3D Mode:**
    - Select "Image to 3D" mode
    - Drag and drop an image into the drop zone
    - Optionally add a text prompt for additional guidance
+   - (Optional) Toggle "Generate Materials" to create PBR material maps
    - Click "Generate 3D Model"
 
 3. **View Results:**
    - Generated models are saved in the `output/` directory
    - Click the folder icon to reveal the file in Finder
    - Models are saved as `.ply` files (compatible with most 3D software)
+   - USDZ files are automatically generated for iPhone/Vision Pro compatibility
+   - Material maps (if generated) are saved in `output/materials/` directory
 
 ## Project Structure
 
@@ -155,6 +176,9 @@ Prometheus/
 ├── PrometheusApp.swift      # Main app entry point
 ├── ContentView.swift         # Main UI view
 ├── shap_e_generator.py      # Python backend script
+├── material_generator.py     # MaterialAnything material generation module
+├── download_material_models.sh # Script to download MaterialAnything models
+├── material_anything/        # MaterialAnything repository
 ├── requirements.txt          # Python dependencies
 ├── Package.swift            # Swift package configuration
 ├── setup.sh                 # Automated setup script
@@ -210,14 +234,20 @@ That's it! The app will build and launch automatically.
 - Check your internet connection
 
 ### GPU Support
-- The app will automatically use GPU if available (CUDA)
-- CPU mode is supported but slower
+- **Apple Silicon (M1/M2/M3/M4)**: Automatically uses MPS (Metal Performance Shaders) for GPU acceleration
+- **CUDA**: Automatically uses CUDA if available (NVIDIA GPUs)
+- **CPU**: Falls back to CPU mode if no GPU is available (slower but functional)
+- Material generation works on all platforms, with full MaterialAnything pipeline requiring CUDA
 
 ## Notes
 
+- **Apple Silicon Performance**: Optimized for M-Series chips with native MPS acceleration for faster generation
 - First generation may take 5-10 minutes as models download and initialize
-- Subsequent generations are faster (typically 1-3 minutes)
+- Subsequent generations are faster (typically 1-3 minutes on M-Series chips)
 - Generated models are saved as PLY files, compatible with Blender, MeshLab, and other 3D software
+- USDZ files are automatically generated for spatial computing (iPhone/Vision Pro)
+- Material generation is optional and works in simplified mode without MaterialAnything models
+- Full MaterialAnything material generation requires CUDA and additional dependencies (pytorch3d, kaolin)
 
 ## License
 
