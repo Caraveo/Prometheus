@@ -377,11 +377,8 @@ struct ContentView: View {
         if let bundlePath = Bundle.main.path(forResource: "shap_e_generator", ofType: "py") {
             pythonScript = bundlePath
             // If running from bundle, get the bundle's parent directory (project root)
-            if let bundleURL = Bundle.main.bundleURL {
-                baseDir = bundleURL.deletingLastPathComponent().path
-            } else {
-                baseDir = FileManager.default.currentDirectoryPath
-            }
+            let bundleURL = Bundle.main.bundleURL
+            baseDir = bundleURL.deletingLastPathComponent().path
         } else {
             // Fallback to current directory
             baseDir = FileManager.default.currentDirectoryPath
