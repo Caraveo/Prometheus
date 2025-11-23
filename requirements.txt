@@ -21,3 +21,9 @@ accelerate
 # They are needed for full MaterialAnything functionality but are optional
 # Note: shap-e must be installed from GitHub (see setup.sh)
 
+# NeRF dependencies (optional - TensorFlow 1.15 may not work on Apple Silicon)
+# tensorflow==1.15  # Very old, may not work on modern systems
+# configargparse
+# Note: NeRF requires TensorFlow 1.15 and CUDA, which may not be compatible with Apple Silicon
+# Consider using modern NeRF implementations like nerfstudio for M-Series chips
+
