@@ -27,8 +27,9 @@ Here are some example 3D models generated with Prometheus:
 ## Features
 
 - 🎨 Beautiful, modern SwiftUI interface
-- 📝 Text-to-3D generation
-- 🖼️ Image-to-3D generation
+- 📝 Text-to-3D generation (Shap-E)
+- 🖼️ Image-to-3D generation (Shap-E)
+- 🎬 **NeRF (Neural Radiance Fields)** - Reconstruct 3D scenes from multiple images (experimental)
 - 🎨 **PBR Material Generation** - Generate albedo, roughness, metallic, and bump maps (optional)
 - 🚀 **Native Apple Silicon Support** - Optimized for M1/M2/M3/M4 chips with MPS acceleration
 - 📱 USDZ export for iPhone and Vision Pro compatibility
@@ -162,7 +163,13 @@ swift run Prometheus
    - (Optional) Toggle "Generate Materials" to create PBR material maps
    - Click "Generate 3D Model"
 
-3. **View Results:**
+3. **NeRF Mode (Experimental):**
+   - Select "NeRF (Multi-Image)" mode
+   - Select a directory containing multiple images of the same scene from different angles
+   - NeRF will reconstruct a 3D scene from the images
+   - **Note:** NeRF requires TensorFlow 1.15 and CUDA, which may not work on Apple Silicon. Consider using modern NeRF implementations for M-Series chips.
+
+4. **View Results:**
    - Generated models are saved in the `output/` directory
    - Click the folder icon to reveal the file in Finder
    - Models are saved as `.ply` files (compatible with most 3D software)
@@ -175,10 +182,12 @@ swift run Prometheus
 Prometheus/
 ├── PrometheusApp.swift      # Main app entry point
 ├── ContentView.swift         # Main UI view
-├── shap_e_generator.py      # Python backend script
+├── shap_e_generator.py      # Python backend script (Shap-E)
 ├── material_generator.py     # MaterialAnything material generation module
+├── nerf_generator.py         # NeRF (Neural Radiance Fields) integration module
 ├── download_material_models.sh # Script to download MaterialAnything models
 ├── material_anything/        # MaterialAnything repository
+├── nerf_repo/                # NeRF repository (bmild/nerf)
 ├── requirements.txt          # Python dependencies
 ├── Package.swift            # Swift package configuration
 ├── setup.sh                 # Automated setup script

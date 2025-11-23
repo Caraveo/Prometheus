@@ -10,10 +10,12 @@ struct ContentView: View {
     @State private var droppedImagePath: String = ""
     @State private var generateMaterials: Bool = false
     @State private var materialPaths: [String: String] = [:]
+    @State private var nerfImagesDir: String = ""
     
     enum GenerationMode: String, CaseIterable {
         case textTo3D = "Text to 3D"
         case imageTo3D = "Image to 3D"
+        case nerf = "NeRF (Multi-Image)"
     }
     
     var body: some View {
@@ -106,8 +108,10 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             if selectedMode == .textTo3D {
                 textInputView
-            } else {
+            } else if selectedMode == .imageTo3D {
                 imageInputView
+            } else if selectedMode == .nerf {
+                nerfInputView
             }
         }
     }
@@ -364,6 +368,18 @@ struct ContentView: View {
     }
     
     private func generate3D() {
+        // Validate NeRF input
+        if selectedMode == .nerf {
+            if nerfImagesDir.isEmpty {
+                statusMessage = "Error: Please select an images directory for NeRF"
+                return
+            }
+            if !FileManager.default.fileExists(atPath: nerfImagesDir) {
+                statusMessage = "Error: Images directory not found: \(nerfImagesDir)"
+                return
+            }
+        }
+        
         isGenerating = true
         statusMessage = "Initializing generation..."
         outputPath = nil
@@ -390,14 +406,24 @@ struct ContentView: View {
         
         Task {
             do {
-                let result = try await runPythonScript(
-                    scriptPath: pythonScript,
-                    envPath: envPath,
-                    mode: selectedMode,
-                    prompt: prompt,
-                    imagePath: selectedMode == .imageTo3D ? droppedImagePath : nil,
-                    generateMaterials: generateMaterials
-                )
+                let result: (success: Bool, outputPath: String?, error: String?, materialPaths: [String: String])
+                
+                if selectedMode == .nerf {
+                    // NeRF uses different script
+                    result = try await runNeRFScript(
+                        imagesDir: nerfImagesDir,
+                        envPath: envPath
+                    )
+                } else {
+                    result = try await runPythonScript(
+                        scriptPath: pythonScript,
+                        envPath: envPath,
+                        mode: selectedMode,
+                        prompt: prompt,
+                        imagePath: selectedMode == .imageTo3D ? droppedImagePath : nil,
+                        generateMaterials: generateMaterials
+                    )
+                }
                 
                 await MainActor.run {
                     isGenerating = false
@@ -593,6 +619,115 @@ struct ContentView: View {
                         continuation.resume(returning: (true, outputPath, nil, materialPaths))
                     } else {
                         let errorMsg = errorOutput.isEmpty ? "Process failed with status \(process.terminationStatus)" : errorOutput
+                        continuation.resume(returning: (false, nil, errorMsg, [:]))
+                    }
+                } catch {
+                    outputHandle.readabilityHandler = nil
+                    errorHandle.readabilityHandler = nil
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    private func runNeRFScript(
+        imagesDir: String,
+        envPath: String
+    ) async throws -> (success: Bool, outputPath: String?, error: String?, materialPaths: [String: String]) {
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                let pipe = Pipe()
+                let errorPipe = Pipe()
+                
+                let pythonExecutable = "\(envPath)/bin/python3"
+                
+                if !FileManager.default.fileExists(atPath: pythonExecutable) {
+                    continuation.resume(returning: (false, nil, "Python environment not found at \(envPath). Please create it first.", [:]))
+                    return
+                }
+                
+                // Get base directory (same logic as generate3D)
+                let baseDir: String
+                if let bundlePath = Bundle.main.path(forResource: "nerf_generator", ofType: "py") {
+                    let bundleURL = Bundle.main.bundleURL
+                    baseDir = bundleURL.deletingLastPathComponent().path
+                } else {
+                    baseDir = FileManager.default.currentDirectoryPath
+                }
+                
+                let scriptPath = (baseDir as NSString).appendingPathComponent("nerf_generator.py")
+                if !FileManager.default.fileExists(atPath: scriptPath) {
+                    continuation.resume(returning: (false, nil, "NeRF generator script not found at \(scriptPath).", [:]))
+                    return
+                }
+                
+                process.executableURL = URL(fileURLWithPath: pythonExecutable)
+                process.arguments = [scriptPath, "--images", imagesDir, "--output", "output"]
+                process.standardOutput = pipe
+                process.standardError = errorPipe
+                
+                let outputHandle = pipe.fileHandleForReading
+                let errorHandle = errorPipe.fileHandleForReading
+                
+                var outputLines: [String] = []
+                var errorLines: [String] = []
+                
+                outputHandle.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    if data.isEmpty { return }
+                    if let text = String(data: data, encoding: .utf8) {
+                        outputLines.append(contentsOf: text.components(separatedBy: .newlines).filter { !$0.isEmpty })
+                    }
+                }
+                
+                errorHandle.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    if data.isEmpty { return }
+                    if let text = String(data: data, encoding: .utf8) {
+                        let lines = text.components(separatedBy: .newlines).filter { !$0.isEmpty }
+                        errorLines.append(contentsOf: lines)
+                        if let lastLine = lines.last, !lastLine.isEmpty {
+                            Task { @MainActor in
+                                self.statusMessage = lastLine
+                            }
+                        }
+                    }
+                }
+                
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    
+                    outputHandle.readabilityHandler = nil
+                    errorHandle.readabilityHandler = nil
+                    
+                    let outputData = outputHandle.readDataToEndOfFile()
+                    let remainingErrorData = errorHandle.readDataToEndOfFile()
+                    
+                    let output = String(data: outputData, encoding: .utf8) ?? ""
+                    if let remainingError = String(data: remainingErrorData, encoding: .utf8), !remainingError.isEmpty {
+                        errorLines.append(contentsOf: remainingError.components(separatedBy: .newlines).filter { !$0.isEmpty })
+                    }
+                    
+                    let errorOutput = errorLines.joined(separator: "\n")
+                    
+                    if process.terminationStatus == 0 {
+                        var outputPath: String? = nil
+                        let lines = output.components(separatedBy: .newlines)
+                        
+                        for line in lines {
+                            if line.contains("MESH:") {
+                                let path = line.components(separatedBy: "MESH:").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                                if !path.isEmpty {
+                                    outputPath = (path as NSString).isAbsolutePath ? path : (baseDir as NSString).appendingPathComponent(path)
+                                }
+                            }
+                        }
+                        
+                        continuation.resume(returning: (true, outputPath, nil, [:]))
+                    } else {
+                        let errorMsg = errorOutput.isEmpty ? "NeRF process failed with status \(process.terminationStatus)" : errorOutput
                         continuation.resume(returning: (false, nil, errorMsg, [:]))
                     }
                 } catch {
