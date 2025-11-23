@@ -372,16 +372,24 @@ struct ContentView: View {
         // Get the script path - try bundle first, then current directory
         let scriptName = "shap_e_generator.py"
         let pythonScript: String
+        let baseDir: String
+        
         if let bundlePath = Bundle.main.path(forResource: "shap_e_generator", ofType: "py") {
             pythonScript = bundlePath
+            // If running from bundle, get the bundle's parent directory (project root)
+            if let bundleURL = Bundle.main.bundleURL {
+                baseDir = bundleURL.deletingLastPathComponent().path
+            } else {
+                baseDir = FileManager.default.currentDirectoryPath
+            }
         } else {
-            let currentDir = FileManager.default.currentDirectoryPath
-            pythonScript = (currentDir as NSString).appendingPathComponent(scriptName)
+            // Fallback to current directory
+            baseDir = FileManager.default.currentDirectoryPath
+            pythonScript = (baseDir as NSString).appendingPathComponent(scriptName)
         }
         
-        // Get environment path
-        let currentDir = FileManager.default.currentDirectoryPath
-        let envPath = (currentDir as NSString).appendingPathComponent("env")
+        // Get environment path relative to base directory
+        let envPath = (baseDir as NSString).appendingPathComponent("env")
         
         Task {
             do {
