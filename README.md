@@ -12,6 +12,16 @@ Prometheus is a native macOS app that brings the power of OpenAI's Shap-E 3D gen
 
 The app uses a Python backend powered by OpenAI Shap-E, providing state-of-the-art text-to-3D and image-to-3D generation capabilities.
 
+## Examples
+
+Here are some example 3D models generated with Prometheus:
+
+<div align="center">
+  <img src="Screenshots/Cube.png" alt="Cube" width="300"/>
+  <img src="Screenshots/Pyramid.png" alt="Pyramid" width="300"/>
+  <img src="Screenshots/Sphere.png" alt="Sphere" width="300"/>
+</div>
+
 ## Features
 
 - 🎨 Beautiful, modern SwiftUI interface
