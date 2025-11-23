@@ -275,7 +275,7 @@ struct ContentView: View {
             .foregroundColor(.white)
             .cornerRadius(10)
         }
-        .disabled(isGenerating || (selectedMode == .textTo3D && prompt.isEmpty) || (selectedMode == .imageTo3D && droppedImagePath.isEmpty))
+        .disabled(isGenerating || (selectedMode == .textTo3D && prompt.isEmpty) || (selectedMode == .imageTo3D && droppedImagePath.isEmpty) || (selectedMode == .nerf && nerfImagesDir.isEmpty))
         .buttonStyle(.plain)
     }
     
