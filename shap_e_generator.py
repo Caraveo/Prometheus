@@ -107,9 +107,9 @@ def setup_models(use_image_model=False):
 
 
 def convert_to_usdz(obj_path: str, usdz_path: str) -> bool:
-    """Convert OBJ file to USDZ format for iPhone/Vision Pro"""
+    """Convert OBJ file to USDZ format for iPhone/Vision Pro using Python"""
     try:
-        # Try using usdzconvert command-line tool (available on macOS)
+        # Try using usdzconvert command-line tool (available on macOS with Xcode)
         import subprocess
         result = subprocess.run(
             ['usdzconvert', obj_path, usdz_path],
@@ -117,19 +117,64 @@ def convert_to_usdz(obj_path: str, usdz_path: str) -> bool:
             text=True,
             timeout=30
         )
-        if result.returncode == 0:
+        if result.returncode == 0 and os.path.exists(usdz_path) and os.path.getsize(usdz_path) > 1000:
             return True
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
     except Exception:
         pass
     
-    # Fallback: Create USDZ manually (USDZ is a ZIP file containing USD)
+    # Fallback: Create USDZ manually using Python
     try:
         import zipfile
         import tempfile
         
-        # Create a simple USD file
+        # Read OBJ file to extract mesh data
+        with open(obj_path, 'r') as f:
+            obj_lines = f.readlines()
+        
+        vertices = []
+        faces = []
+        
+        for line in obj_lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if line.startswith('v '):
+                # Vertex: v x y z
+                parts = line.split()
+                if len(parts) >= 4:
+                    try:
+                        x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
+                        vertices.append(f"({x}, {y}, {z})")
+                    except ValueError:
+                        continue
+            elif line.startswith('f '):
+                # Face: f v1 v2 v3 (1-indexed, may have texture/normal indices)
+                parts = line.split()[1:]
+                if len(parts) >= 3:
+                    try:
+                        # Extract vertex indices (first number before any '/')
+                        face_verts = []
+                        for p in parts[:3]:
+                            v_idx = int(p.split('/')[0]) - 1  # Convert to 0-indexed
+                            if 0 <= v_idx < len(vertices):
+                                face_verts.append(v_idx)
+                        if len(face_verts) == 3:
+                            faces.extend(face_verts)
+                    except (ValueError, IndexError):
+                        continue
+        
+        if not vertices or not faces:
+            print(f"Invalid OBJ data: {len(vertices)} vertices, {len(faces)} face indices", file=sys.stderr)
+            return False
+        
+        # Create USD file content with proper formatting
+        vertex_str = ",\n            ".join(vertices)
+        face_vertex_indices = ",\n            ".join([str(i) for i in faces])
+        num_faces = len(faces) // 3
+        face_vertex_counts = ",\n            ".join(["3"] * num_faces)
+        
         usd_content = f"""#usda 1.0
 (
     defaultPrim = "Root"
@@ -141,20 +186,17 @@ def Xform "Root"
 {{
     def Mesh "Mesh"
     {{
-        int[] faceVertexCounts = []
-        int[] faceVertexIndices = []
-        point3f[] points = []
+        int[] faceVertexCounts = [{face_vertex_counts}]
+        int[] faceVertexIndices = [{face_vertex_indices}]
+        point3f[] points = [{vertex_str}]
         normal3f[] normals = []
         texCoord2f[] primvars:st = []
     }}
 }}
 """
         
-        # For now, create a placeholder USDZ
-        # In production, you'd parse the OBJ and convert vertices/faces to USD format
-        # This is a simplified version - for full conversion, consider using pxr library
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.usd', delete=False) as tmp_usd:
+        # Create temporary USD file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.usd', delete=False, encoding='utf-8') as tmp_usd:
             tmp_usd.write(usd_content)
             tmp_usd_path = tmp_usd.name
         
@@ -164,13 +206,14 @@ def Xform "Root"
         
         os.unlink(tmp_usd_path)
         
-        # Note: This creates a basic USDZ structure but doesn't include the actual mesh data
-        # For full functionality, you'd need to parse OBJ and convert to USD format
-        # For now, return False to indicate incomplete conversion
+        if os.path.exists(usdz_path) and os.path.getsize(usdz_path) > 1000:
+            return True
         return False
         
     except Exception as e:
         print(f"USDZ conversion error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
         return False
 
 
